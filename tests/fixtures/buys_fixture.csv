@@ -1,0 +1,5 @@
+match_id,date,patch,event,tier,map,round,player,team,agent,side,gun,armor,spent,bank
+vlr-fx-1,2026-01-10,13.10,Test Cup,league,ascent,1,playerA1,TeamA,jett,atk,classic,,0,800
+vlr-fx-1,2026-01-10,13.10,Test Cup,league,ascent,1,playerB1,TeamB,cypher,def,classic,,0,800
+vlr-fx-1,2026-01-10,13.10,Test Cup,league,ascent,2,playerA1,TeamA,jett,atk,vandal,heavy,3900,100
+vlr-fx-1,2026-01-10,13.10,Test Cup,league,ascent,2,playerB1,TeamB,cypher,def,,,,1900
