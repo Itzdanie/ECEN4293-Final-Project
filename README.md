@@ -1,8 +1,8 @@
 # ECEN4293-Final-Project
 Valorant Map Win-Probability Engine
 
-Final project for ECEN 4293 (Numerical Methods for Python), Oklahoma State University.
-See [CLAUDE.md](CLAUDE.md) for the full spec.
+Final project for ECEN 4293, Numerical Methods for Python, Oklahoma State University.
+
 
 ## Setup
 
