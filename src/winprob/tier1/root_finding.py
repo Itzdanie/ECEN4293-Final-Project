@@ -18,7 +18,11 @@ def _validate_state(score_a: int, score_b: int) -> None:
             f"({score_a}, {score_b}) is out of range for Tier 1: scores must be 0-{WIN_SCORE}"
         )
     if score_a == WIN_SCORE and score_b == WIN_SCORE:
-        raise ValueError(f"({score_a}, {score_b}) is impossible: both teams can't reach {WIN_SCORE}")
+        raise ValueError(
+            f"({score_a}, {score_b}) is a real overtime tie (reachable when the first OT "
+            f"pair splits), but solve_linear_system's table stops at the "
+            f"{WIN_SCORE - 1}-{WIN_SCORE - 1} overtime entry and doesn't cover deeper ties"
+        )
 
 
 def _objective(score_a: int, score_b: int, a_started: Side, target: float):
