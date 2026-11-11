@@ -19,8 +19,3 @@ Raw data (`data/raw/*.csv`) is not committed; place the chiro.gg CSV exports the
 ```bash
 pytest
 ```
-
-## Acknowledgments
-
-Repo scaffolding, the data-loading module, and its tests were written with
-assistance from Claude (Anthropic).
