@@ -9,7 +9,8 @@ from winprob.tier3.monte_carlo import _a_is_atk, _no_future_value_in_saving, _si
 from winprob.tier3.regression_defaults import BASE_INTERCEPT, DELTA_LOADOUT_COEF, MAP_EFFECTS, POOL_AVERAGE_MAP_EFFECT
 
 INTERCEPT = BASE_INTERCEPT + POOL_AVERAGE_MAP_EFFECT  # pool-average, matching map_name=None
-from winprob.tier3.ult_model import MAX_ULTS_READY, step_ults
+from winprob.tier3.ult_defaults import AGENT_PARAMS
+from winprob.tier3.ult_model import GENERIC_BOOST, SLOTS, initial_ready, slot_params, step_ults
 
 # 10+ states for Requirement 7, spanning scores, the overtime entry, and a pistol boundary.
 SAMPLE_STATES = [
@@ -74,10 +75,8 @@ def test_ult_boost_sensitivity_sweep_is_monotonic():
     # lift_pp-derived logit boost - checked in isolation (one round),
     # since over a full match the effect dilutes the same way the
     # economy's initial lump-sum advantage does (see memory/writeup).
-    from winprob.tier3.ult_model import MAX_LOGIT_BOOST
-
     scales = [0.0, 0.25, 0.5, 0.75, 1.0]
-    probs = [_sigmoid(INTERCEPT + scale * MAX_LOGIT_BOOST) for scale in scales]
+    probs = [_sigmoid(INTERCEPT + scale * GENERIC_BOOST) for scale in scales]
     assert all(b > a for a, b in zip(probs, probs[1:]))
 
 
@@ -229,19 +228,77 @@ def test_apply_round_income_respects_the_credit_cap():
 # --- ult model ---------------------------------------------------------------
 
 
-def test_step_ults_stays_within_bounds():
-    rng = np.random.default_rng(0)
-    ults_ready = np.zeros(2000, dtype=np.int64)
-    for _ in range(50):
-        used, ults_ready = step_ults(rng, ults_ready)
-        assert (ults_ready >= 0).all()
-        assert (ults_ready <= MAX_ULTS_READY).all()
-    # after many rounds, some should have charged and used at least one ult
-    assert used.any()
+def _fresh_state(n, ready_first=0):
+    ready = np.zeros((n, SLOTS), dtype=bool)
+    ready[:, :ready_first] = True
+    return ready, np.zeros((n, SLOTS), dtype=np.int64), np.zeros((n, SLOTS), dtype=bool)
 
 
-def test_a_ult_cannot_be_used_from_zero_ready():
+def test_a_ready_unused_ult_stays_ready_and_a_used_one_is_empty_next_round():
+    # the two real-data facts the step relies on (37k and 53k observed transitions)
     rng = np.random.default_rng(0)
-    used, ults_ready = step_ults(rng, np.zeros(500, dtype=np.int64))
-    # starting from 0, nothing can be used this same round (charging happens first)
+    params = slot_params(["omen"] * SLOTS)
+    ready, age, post = _fresh_state(5000, ready_first=SLOTS)
+    used, next_ready, _, next_post = step_ults(rng, ready, age, post, params)
+    assert not next_ready[used].any()  # spent -> never ready next round
+    assert next_ready[~used].all()  # ready and unused -> stays ready
+    assert next_post[used].all()
+
+
+def test_nothing_is_used_from_a_team_with_no_ready_ults():
+    rng = np.random.default_rng(0)
+    used, _, _, _ = step_ults(rng, *_fresh_state(500), slot_params(None))
     assert not used.any()
+
+
+def test_use_rate_differs_by_agent_as_in_the_real_data():
+    rng = np.random.default_rng(0)
+    ready, age, post = _fresh_state(20_000, ready_first=SLOTS)
+    omen_used, *_ = step_ults(rng, ready, age, post, slot_params(["omen"] * SLOTS))
+    raze_used, *_ = step_ults(rng, ready, age, post, slot_params(["raze"] * SLOTS))
+    assert abs(omen_used.mean() - AGENT_PARAMS["omen"][1]) < 0.01
+    assert abs(raze_used.mean() - AGENT_PARAMS["raze"][1]) < 0.01
+    assert raze_used.mean() > omen_used.mean() + 0.2  # Omen's is held far more often
+
+
+def test_slot_params_validation_errors_are_descriptive():
+    with pytest.raises(ValueError, match="unknown agents"):
+        slot_params(["omen", "raze", "jett", "sova", "not_an_agent"])
+    with pytest.raises(ValueError, match="5 agents"):
+        slot_params(["omen", "raze"])
+    with pytest.raises(ValueError, match="between 0 and 5"):
+        initial_ready(6, None)
+    with pytest.raises(ValueError, match="disagrees"):
+        initial_ready(2, [True, False, False, False, False])
+
+
+def test_ready_ults_cannot_be_given_at_a_pistol_round():
+    for score in [(0, 0), (6, 6)]:
+        with pytest.raises(ValueError, match="pistol and overtime"):
+            simulate_win_probability(
+                score_a=score[0], score_b=score[1], bank_a=800, bank_b=800, ults_a=1, ults_b=0,
+                streak_a=0, streak_b=0, n=10, rng=np.random.default_rng(0),
+            )
+
+
+def test_a_team_with_more_ready_ults_has_the_edge_when_all_else_is_equal():
+    # whole-map effect is small, so use many playouts at a mid-half state (round 11)
+    kw = dict(score_a=5, score_b=5, bank_a=19000, bank_b=19000, streak_a=0, streak_b=0,
+              n=200_000, a_started="def", ults_b=0)
+    p_more, _, _ = simulate_win_probability(**kw, ults_a=0, rng=np.random.default_rng(3))
+    ready = [True] * SLOTS
+    p_ult, _, _ = simulate_win_probability(
+        **{**kw, "ults_a": SLOTS}, ready_a=ready, agents_a=["chamber", "cypher", "raze", "jett", "veto"],
+        rng=np.random.default_rng(3),
+    )
+    assert p_ult > p_more
+
+
+def test_ults_reset_to_not_ready_at_the_start_of_overtime():
+    # in OT every round starts with nothing ready, so ult state can't matter:
+    # a 12-12 start is the same with or without ult knobs on.
+    kw = dict(score_a=12, score_b=12, bank_a=0, bank_b=0, ults_a=0, ults_b=0,
+              streak_a=0, streak_b=0, n=20_000)
+    p0, _, _ = simulate_win_probability(**kw, rng=np.random.default_rng(5), ult_boost_scale=0.0)
+    p1, _, _ = simulate_win_probability(**kw, rng=np.random.default_rng(5), ult_boost_scale=1.0)
+    assert p0 == p1

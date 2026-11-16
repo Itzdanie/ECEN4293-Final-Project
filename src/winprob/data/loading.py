@@ -71,6 +71,17 @@ _BUYS_DTYPES = {
 }
 
 
+_ULT_READY_DTYPES = {
+    "match_id": "string",
+    "round": "int64",
+    "team": "string",
+    "slot": "int64",
+    "agent": "string",
+    "ready": "int64",
+    "spent": "int64",
+}
+
+
 def _read_csv(path: Path, dtypes: dict[str, str]) -> pd.DataFrame:
     return pd.read_csv(path, dtype=dtypes, parse_dates=["date"])
 
@@ -124,3 +135,18 @@ def load_ult_per_round_by_agent(
 ) -> pd.DataFrame:
     """Per-agent ultimate readiness/usage/lift figures."""
     return _read_aggregate_csv(Path(path))
+
+
+def load_ult_ready(
+    path: Path | str = RAW_DATA_DIR / "ult_ready_spent_filtered.csv",
+) -> pd.DataFrame:
+    """One row per player per round: whether that player's ult was charged
+    at the start of the round (``ready``) and whether it was used during it
+    (``spent``). ``team`` is ``"a"``/``"b"`` as in Maps (team_a / team_b);
+    ``slot`` is the player's fixed position 0-4 within the team.
+
+    Known export quirks (see :func:`winprob.data.integrity.check_ult_ready`):
+    rounds 12 and 24 are zeroed out and partly missing, and some team-rounds
+    have fewer than 5 player rows.
+    """
+    return pd.read_csv(Path(path), dtype=_ULT_READY_DTYPES)
