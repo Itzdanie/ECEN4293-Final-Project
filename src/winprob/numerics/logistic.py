@@ -74,3 +74,45 @@ def fit_gradient_descent(
             return beta, iteration, history
 
     return beta, max_iter, history
+
+
+def fit_newton_penalized(
+    X: np.ndarray,
+    y: np.ndarray,
+    penalty: np.ndarray,
+    tol: float = 1e-8,
+    max_iter: int = 50,
+) -> tuple[np.ndarray, int, list[float]]:
+    """Ridge-penalized logistic fit by Newton's method.
+
+    Maximizes ``loglik(beta) - 0.5 * sum(penalty_j * beta_j**2)``: each
+    coefficient ``j`` is pulled toward 0 with strength ``penalty[j]`` (0 =
+    unpenalized, so ``penalty=0`` reproduces :func:`fit_newton`). The Newton
+    step solves ``(X^T W X + diag(penalty)) delta = X^T (y - p_hat) - penalty * beta``.
+    The penalty also makes the system invertible when columns are redundant
+    (e.g. a role column equal to the sum of its sub-role columns).
+
+    Returns ``(beta, n_iterations, penalized_objective_history)``.
+    """
+    n, p = X.shape
+    penalty = np.asarray(penalty, dtype=float)
+    beta = np.zeros(p)
+
+    def objective(b: np.ndarray) -> float:
+        return log_likelihood(X, y, b) - 0.5 * float(np.sum(penalty * b * b))
+
+    history = [objective(beta)]
+    for iteration in range(1, max_iter + 1):
+        p_hat = sigmoid(X @ beta)
+        w = p_hat * (1.0 - p_hat)
+        gradient = X.T @ (y - p_hat) - penalty * beta
+        hessian_neg = (X * w[:, None]).T @ X + np.diag(penalty)
+
+        delta = lu_solve(hessian_neg, gradient)
+        beta = beta + delta
+        history.append(objective(beta))
+
+        if np.max(np.abs(delta)) < tol:
+            return beta, iteration, history
+
+    return beta, max_iter, history

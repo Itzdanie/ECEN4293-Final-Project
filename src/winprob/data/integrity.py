@@ -57,3 +57,30 @@ def check_scoreline(maps: pd.DataFrame, rounds: pd.DataFrame) -> pd.DataFrame:
             "reason",
         ],
     )
+
+
+def check_ult_ready(ult: pd.DataFrame) -> dict[str, int]:
+    """Counts of rule violations in the per-player ult-readiness export.
+
+    A clean file has zero for each of these, apart from the two documented
+    export artifacts reported separately:
+
+    - ``spent_without_ready``: used an ult that wasn't charged.
+    - ``ready_at_reset_round``: ready at the start of round 1, 13 or any
+      overtime round (>= 25) - impossible, those rounds reset ult points.
+    - ``duplicate_slots``: more than one row for the same player-round.
+    - ``rows_in_rounds_12_24``: rows in the two zeroed-out rounds (an
+      export bug, not game behavior - they are excluded from fitting).
+    - ``incomplete_team_rounds``: team-rounds with fewer than 5 player rows.
+    """
+    reset_rounds = (ult["round"].isin([1, 13])) | (ult["round"] >= 25)
+    sizes = ult.groupby(["match_id", "round", "team"]).size()
+    return {
+        "spent_without_ready": int(((ult["spent"] == 1) & (ult["ready"] == 0)).sum()),
+        "ready_at_reset_round": int((reset_rounds & (ult["ready"] == 1)).sum()),
+        "duplicate_slots": int(
+            ult.duplicated(["match_id", "round", "team", "slot"]).sum()
+        ),
+        "rows_in_rounds_12_24": int(ult["round"].isin([12, 24]).sum()),
+        "incomplete_team_rounds": int((sizes < 5).sum()),
+    }

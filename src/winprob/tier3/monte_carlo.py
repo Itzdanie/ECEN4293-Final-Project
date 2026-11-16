@@ -22,6 +22,8 @@ own model, round for round.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
 from winprob.economy.constants import OVERTIME_ROUND_CREDITS, PISTOL_ROUND_CREDITS
@@ -40,7 +42,7 @@ from winprob.tier3.regression_defaults import (
     MAP_EFFECTS,
     POOL_AVERAGE_MAP_EFFECT,
 )
-from winprob.tier3.ult_model import MAX_LOGIT_BOOST, step_ults
+from winprob.tier3.ult_model import SLOTS, initial_ready, slot_params, step_ults
 
 Z_95 = 1.959963984540054
 
@@ -102,6 +104,10 @@ def simulate_win_probability(
     p_atk: float = 0.5,
     ult_boost_scale: float = 1.0,
     map_name: str | None = None,
+    agents_a: Sequence[str] | None = None,
+    agents_b: Sequence[str] | None = None,
+    ready_a: Sequence[bool] | None = None,
+    ready_b: Sequence[bool] | None = None,
 ) -> tuple[float, float, float]:
     """Estimate P(team A wins the map) from a Tier 3 state over ``n``
     simulated playouts. Returns ``(p_hat, ci_low, ci_high)``.
@@ -109,6 +115,13 @@ def simulate_win_probability(
     ``map_name``, if given, uses that map's real fitted attack-side effect
     (one of the 12 in ``winprob.tier3.regression_defaults.MAP_EFFECTS``);
     otherwise falls back to the round-count-weighted average across all 12.
+
+    Ults are tracked per player slot. ``ults_a``/``ults_b`` is how many of
+    each team's ults are ready now (the first that many slots, or exactly the
+    slots flagged in ``ready_a``/``ready_b``). ``agents_a``/``agents_b`` (five
+    agent names each) give every slot its real charge speed, use rate and win
+    boost; left as None, slots use the pooled generic values. Ults can't be
+    ready at the start of a pistol round or an overtime round (they reset).
     """
     winner = map_winner(score_a, score_b)
     if winner is not None:
@@ -126,12 +139,30 @@ def simulate_win_probability(
 
     a_started_atk = a_started == "atk"
 
+    params_a = slot_params(agents_a)
+    params_b = slot_params(agents_b)
+    flags_a = initial_ready(ults_a, ready_a)
+    flags_b = initial_ready(ults_b, ready_b)
+    start_total = score_a + score_b
+    starts_on_reset = start_total in (0, ROUNDS_PER_HALF) or start_total >= 2 * ROUNDS_PER_HALF
+    if starts_on_reset and (flags_a.any() or flags_b.any()):
+        raise ValueError(
+            f"ults can't be ready at the start of round {start_total + 1} "
+            "(pistol and overtime rounds reset every ult); pass no ready ults."
+        )
+
     sa = np.full(n, score_a, dtype=np.int64)
     sb = np.full(n, score_b, dtype=np.int64)
     bank_a_arr = np.full(n, float(bank_a))
     bank_b_arr = np.full(n, float(bank_b))
-    ults_a_arr = np.full(n, ults_a, dtype=np.int64)
-    ults_b_arr = np.full(n, ults_b, dtype=np.int64)
+    ready_a_arr = np.tile(flags_a, (n, 1))
+    ready_b_arr = np.tile(flags_b, (n, 1))
+    # slots start at the age they'd have if the half had begun empty
+    age0 = start_total % ROUNDS_PER_HALF if start_total < 2 * ROUNDS_PER_HALF else 0
+    age_a_arr = np.full((n, SLOTS), age0, dtype=np.int64)
+    age_b_arr = np.full((n, SLOTS), age0, dtype=np.int64)
+    post_a_arr = np.zeros((n, SLOTS), dtype=bool)
+    post_b_arr = np.zeros((n, SLOTS), dtype=bool)
     streak_a_arr = np.full(n, streak_a, dtype=np.int64)
     streak_b_arr = np.full(n, streak_b, dtype=np.int64)
     survivors_a_arr = np.full(n, survivors_a, dtype=np.int64)
@@ -156,6 +187,15 @@ def simulate_win_probability(
         # pistol round or in overtime, same as the real economy.
         survivors_a_arr[idx] = np.where(reset, 0, survivors_a_arr[idx])
         survivors_b_arr[idx] = np.where(reset, 0, survivors_b_arr[idx])
+        # ult points reset at pistol rounds and in overtime too
+        reset_col = reset[:, None]
+        for ready_arr, age_arr, post_arr in (
+            (ready_a_arr, age_a_arr, post_a_arr),
+            (ready_b_arr, age_b_arr, post_b_arr),
+        ):
+            ready_arr[idx] = np.where(reset_col, False, ready_arr[idx])
+            age_arr[idx] = np.where(reset_col, 0, age_arr[idx])
+            post_arr[idx] = np.where(reset_col, False, post_arr[idx])
 
         force_a = _no_future_value_in_saving(sa[idx], sb[idx], total)
         force_b = _no_future_value_in_saving(sb[idx], sa[idx], total)
@@ -171,11 +211,10 @@ def simulate_win_probability(
             half2 = (~(total < ROUNDS_PER_HALF)).astype(float)
             logit = BASE_INTERCEPT + map_effect + DELTA_LOADOUT_COEF * delta_loadout_atk + HALF2_COEF * half2
 
-            ults_used_a, ults_a_arr[idx] = step_ults(rng, ults_a_arr[idx])
-            ults_used_b, ults_b_arr[idx] = step_ults(rng, ults_b_arr[idx])
-            boost = ult_boost_scale * MAX_LOGIT_BOOST
-            logit += np.where(a_is_atk, ults_used_a.astype(float), -ults_used_a.astype(float)) * boost
-            logit += np.where(a_is_atk, -ults_used_b.astype(float), ults_used_b.astype(float)) * boost
+            # each ready ult adds its agent's boost to its own team's side of the round
+            boost_a = (ready_a_arr[idx] * params_a["boost"]).sum(axis=1)
+            boost_b = (ready_b_arr[idx] * params_b["boost"]).sum(axis=1)
+            logit += ult_boost_scale * np.where(a_is_atk, boost_a - boost_b, boost_b - boost_a)
 
             p_atk_wins = _sigmoid(logit)
             p_a_wins_round = np.where(a_is_atk, p_atk_wins, 1.0 - p_atk_wins)
@@ -183,13 +222,19 @@ def simulate_win_probability(
             # run through the regression at all.
             p_a_wins_round = np.where(pistol, 0.5, p_a_wins_round)
         else:
-            ults_used_a, ults_a_arr[idx] = step_ults(rng, ults_a_arr[idx])
-            ults_used_b, ults_b_arr[idx] = step_ults(rng, ults_b_arr[idx])
             # matches Tier 1 exactly when this toggle is off (Requirement 7):
             # Tier 1 has no pistol-round special case, so neither does this.
             p_a_wins_round = np.where(a_is_atk, p_atk, 1.0 - p_atk)
 
         a_wins_round = rng.random(idx.size) < p_a_wins_round
+
+        # ults evolve every round whether or not they feed the outcome
+        _, ready_a_arr[idx], age_a_arr[idx], post_a_arr[idx] = step_ults(
+            rng, ready_a_arr[idx], age_a_arr[idx], post_a_arr[idx], params_a
+        )
+        _, ready_b_arr[idx], age_b_arr[idx], post_b_arr[idx] = step_ults(
+            rng, ready_b_arr[idx], age_b_arr[idx], post_b_arr[idx], params_b
+        )
 
         # a pistol loss hard-resets the streak to 1 (fresh economy),
         # regardless of whatever streak was carried in - same rule as Tier 2.
