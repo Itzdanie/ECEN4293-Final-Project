@@ -16,7 +16,12 @@ from __future__ import annotations
 import numpy as np
 
 from winprob.economy.buy_type import BUY_TYPES, ECO_MAX, SEMI_BUY_MAX, SEMI_ECO_MAX
-from winprob.economy.constants import CREDIT_CAP, KILL_REWARD, PLANT_BONUS, ROUND_WIN_REWARD
+from winprob.economy.constants import (
+    KILL_REWARD,
+    TEAM_CREDIT_CAP,
+    TEAM_LOSS_BONUS_BY_STREAK,
+    TEAM_ROUND_WIN_REWARD,
+)
 
 # Mean real team loadout per buy-type bucket (credits), from
 # team_round_loadout over the real Buys data - what a team spends once its
@@ -36,9 +41,9 @@ _BUCKET_THRESHOLDS = np.array([ECO_MAX, SEMI_ECO_MAX, SEMI_BUY_MAX])
 # matters for the round-win model here, not their variance.
 MEAN_KILLS_IF_WON = 4.0
 MEAN_KILLS_IF_LOST = 2.0
-PLANT_RATE = 0.677  # real fraction of gun rounds with a spike plant
 
-_LOSS_BONUS_ARRAY = np.array([0, 1900, 2400, 2900])  # indexed by streak 0-3 (0 unused)
+# team-total loss bonus, indexed by streak 0-3 (0 unused)
+_LOSS_BONUS_ARRAY = np.array([0, *(TEAM_LOSS_BONUS_BY_STREAK[k] for k in (1, 2, 3))])
 
 # Own-team survivor count (0-5) by round outcome, from the real data: a
 # won round leaves a real, varied spread of survivors (mean 2.85); a lost
@@ -82,16 +87,21 @@ def apply_round_income(
     bank_after_spend: np.ndarray,
     won: np.ndarray,
     streak_after: np.ndarray,
-    is_attacker: np.ndarray,
-    planted: np.ndarray,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """A team's bank after this round's win/loss bonus, kill reward, and
-    plant bonus (attackers only), capped at the credit cap."""
-    bonus = np.where(won, ROUND_WIN_REWARD, _LOSS_BONUS_ARRAY[streak_after])
+    """A team's bank after this round's win/loss bonus and kill reward,
+    capped at the team credit cap. All amounts are team totals (five players).
+
+    The spike-plant bonus is deliberately NOT included, though it is real
+    income for attackers (300/player, validated). Fed through this model's
+    buy buckets it gave attackers ~+1.7k of loadout per round against
+    +0.13k to +0.34k in the real data, on top of the attacker edge already
+    in the fitted intercept (a double count). Without it the simulated gap
+    is +0.18k / +0.26k, matching the real data. See NOTES.md.
+    """
+    bonus = np.where(won, TEAM_ROUND_WIN_REWARD, _LOSS_BONUS_ARRAY[streak_after])
     kills_mean = np.where(won, MEAN_KILLS_IF_WON, MEAN_KILLS_IF_LOST)
     kills = rng.poisson(kills_mean)
-    plant_income = np.where(is_attacker & planted, PLANT_BONUS, 0)
 
-    income = bonus + kills * KILL_REWARD + plant_income
-    return np.minimum(bank_after_spend + income, CREDIT_CAP)
+    income = bonus + kills * KILL_REWARD
+    return np.minimum(bank_after_spend + income, TEAM_CREDIT_CAP)

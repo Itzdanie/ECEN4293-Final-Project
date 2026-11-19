@@ -26,10 +26,9 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from winprob.economy.constants import OVERTIME_ROUND_CREDITS, PISTOL_ROUND_CREDITS
+from winprob.economy.constants import TEAM_OVERTIME_ROUND_CREDITS, TEAM_PISTOL_ROUND_CREDITS
 from winprob.tier1.states import ROUNDS_PER_HALF, WIN_SCORE, Side, map_winner
 from winprob.tier3.economy_sim import (
-    PLANT_RATE,
     SURVIVOR_VALUE,
     apply_round_income,
     decide_spend,
@@ -179,10 +178,10 @@ def simulate_win_probability(
         reset = pistol | overtime
         a_is_atk = _a_is_atk(total, a_started_atk)
 
-        bank_a_arr[idx] = np.where(pistol, PISTOL_ROUND_CREDITS, bank_a_arr[idx])
-        bank_b_arr[idx] = np.where(pistol, PISTOL_ROUND_CREDITS, bank_b_arr[idx])
-        bank_a_arr[idx] = np.where(overtime, OVERTIME_ROUND_CREDITS, bank_a_arr[idx])
-        bank_b_arr[idx] = np.where(overtime, OVERTIME_ROUND_CREDITS, bank_b_arr[idx])
+        bank_a_arr[idx] = np.where(pistol, TEAM_PISTOL_ROUND_CREDITS, bank_a_arr[idx])
+        bank_b_arr[idx] = np.where(pistol, TEAM_PISTOL_ROUND_CREDITS, bank_b_arr[idx])
+        bank_a_arr[idx] = np.where(overtime, TEAM_OVERTIME_ROUND_CREDITS, bank_a_arr[idx])
+        bank_b_arr[idx] = np.where(overtime, TEAM_OVERTIME_ROUND_CREDITS, bank_b_arr[idx])
         # gear (and so survivor carryover) resets along with credits at a
         # pistol round or in overtime, same as the real economy.
         survivors_a_arr[idx] = np.where(reset, 0, survivors_a_arr[idx])
@@ -199,8 +198,8 @@ def simulate_win_probability(
 
         force_a = _no_future_value_in_saving(sa[idx], sb[idx], total)
         force_b = _no_future_value_in_saving(sb[idx], sa[idx], total)
-        spend_a = np.where(pistol, PISTOL_ROUND_CREDITS, np.where(overtime, OVERTIME_ROUND_CREDITS, decide_spend(bank_a_arr[idx], force_a)))
-        spend_b = np.where(pistol, PISTOL_ROUND_CREDITS, np.where(overtime, OVERTIME_ROUND_CREDITS, decide_spend(bank_b_arr[idx], force_b)))
+        spend_a = np.where(pistol, TEAM_PISTOL_ROUND_CREDITS, np.where(overtime, TEAM_OVERTIME_ROUND_CREDITS, decide_spend(bank_a_arr[idx], force_a)))
+        spend_b = np.where(pistol, TEAM_PISTOL_ROUND_CREDITS, np.where(overtime, TEAM_OVERTIME_ROUND_CREDITS, decide_spend(bank_b_arr[idx], force_b)))
         effective_loadout_a = spend_a + survivors_a_arr[idx] * SURVIVOR_VALUE
         effective_loadout_b = spend_b + survivors_b_arr[idx] * SURVIVOR_VALUE
 
@@ -241,14 +240,13 @@ def simulate_win_probability(
         streak_after_a = np.where(pistol, np.where(a_wins_round, 0, 1), np.where(a_wins_round, 0, np.minimum(streak_a_arr[idx] + 1, 3)))
         streak_after_b = np.where(pistol, np.where(~a_wins_round, 0, 1), np.where(~a_wins_round, 0, np.minimum(streak_b_arr[idx] + 1, 3)))
 
-        planted = rng.random(idx.size) < PLANT_RATE
         bank_a_arr[idx] = apply_round_income(
             bank_a_arr[idx] - spend_a, a_wins_round, streak_after_a,
-            a_is_atk, planted, rng,
+            rng,
         )
         bank_b_arr[idx] = apply_round_income(
             bank_b_arr[idx] - spend_b, ~a_wins_round, streak_after_b,
-            ~a_is_atk, planted, rng,
+            rng,
         )
 
         streak_a_arr[idx] = streak_after_a
