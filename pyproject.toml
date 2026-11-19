@@ -13,6 +13,9 @@ dependencies = [
     "matplotlib>=3.8",
 ]
 
+[project.scripts]
+winprob = "winprob.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",

@@ -20,6 +20,8 @@ that was equivalent to an "average" map; it wasn't).
 
 from __future__ import annotations
 
+import math
+
 BASE_INTERCEPT = 0.1279033760495436
 DELTA_LOADOUT_COEF = 0.1046087895064958  # per 1000 credits of attacker loadout advantage
 HALF2_COEF = 0.008768207764801673
@@ -61,3 +63,11 @@ _TOTAL_ROUNDS = sum(_MAP_ROUND_COUNTS.values())
 POOL_AVERAGE_MAP_EFFECT = sum(
     (_MAP_ROUND_COUNTS[m] / _TOTAL_ROUNDS) * MAP_EFFECTS[m] for m in MAP_EFFECTS
 )
+
+
+def default_p_atk(map_name: str | None = None) -> float:
+    """P(attackers win a round) between evenly-geared teams, from the Phase 5
+    fit: the base intercept plus that map's effect (or the pool average).
+    The natural default round-win rate for Tier 1 when none is given."""
+    effect = POOL_AVERAGE_MAP_EFFECT if map_name is None else MAP_EFFECTS[map_name]
+    return 1.0 / (1.0 + math.exp(-(BASE_INTERCEPT + effect)))

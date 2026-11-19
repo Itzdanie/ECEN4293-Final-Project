@@ -1,12 +1,23 @@
 import numpy as np
 import pytest
 
-from winprob.economy.constants import CREDIT_CAP, LOSS_BONUS_BY_STREAK, ROUND_WIN_REWARD
+from winprob.economy.constants import (
+    TEAM_CREDIT_CAP,
+    TEAM_LOSS_BONUS_BY_STREAK,
+    TEAM_PISTOL_ROUND_CREDITS,
+    TEAM_ROUND_WIN_REWARD,
+)
 from winprob.tier1.exact import solve_linear_system
 from winprob.tier3 import simulate_win_probability
 from winprob.tier3.economy_sim import apply_round_income, decide_spend, draw_survivors
 from winprob.tier3.monte_carlo import _a_is_atk, _no_future_value_in_saving, _sigmoid
-from winprob.tier3.regression_defaults import BASE_INTERCEPT, DELTA_LOADOUT_COEF, MAP_EFFECTS, POOL_AVERAGE_MAP_EFFECT
+from winprob.tier3.regression_defaults import (
+    BASE_INTERCEPT,
+    DELTA_LOADOUT_COEF,
+    HALF2_COEF,
+    MAP_EFFECTS,
+    POOL_AVERAGE_MAP_EFFECT,
+)
 
 INTERCEPT = BASE_INTERCEPT + POOL_AVERAGE_MAP_EFFECT  # pool-average, matching map_name=None
 from winprob.tier3.ult_defaults import AGENT_PARAMS
@@ -93,8 +104,8 @@ def test_forced_eco_after_a_lost_full_buy_duel_gives_a_real_edge():
     spend_b = decide_spend(bank_b)
     a_wins = np.ones(n, dtype=bool)
 
-    bank_a_next = apply_round_income(bank_a - spend_a, a_wins, np.zeros(n, dtype=np.int64), np.ones(n, bool), np.zeros(n, bool), rng)
-    bank_b_next = apply_round_income(bank_b - spend_b, ~a_wins, np.ones(n, dtype=np.int64), np.zeros(n, bool), np.zeros(n, bool), rng)
+    bank_a_next = apply_round_income(bank_a - spend_a, a_wins, np.zeros(n, dtype=np.int64), rng)
+    bank_b_next = apply_round_income(bank_b - spend_b, ~a_wins, np.ones(n, dtype=np.int64), rng)
     survivors_a = draw_survivors(rng, a_wins)
     survivors_b = draw_survivors(rng, ~a_wins)
 
@@ -117,8 +128,8 @@ def test_a_is_atk_matches_tier1_side_rule():
 
 
 def test_loss_bonus_increases_with_streak_and_caps_at_three():
-    assert LOSS_BONUS_BY_STREAK[1] < LOSS_BONUS_BY_STREAK[2] < LOSS_BONUS_BY_STREAK[3]
-    assert LOSS_BONUS_BY_STREAK[3] < ROUND_WIN_REWARD  # winning always pays more than any loss bonus
+    assert TEAM_LOSS_BONUS_BY_STREAK[1] < TEAM_LOSS_BONUS_BY_STREAK[2] < TEAM_LOSS_BONUS_BY_STREAK[3]
+    assert TEAM_LOSS_BONUS_BY_STREAK[3] < TEAM_ROUND_WIN_REWARD  # winning always pays more than any loss bonus
 
 
 def test_map_name_none_matches_pool_average():
@@ -217,12 +228,12 @@ def test_draw_survivors_matches_real_win_loss_distributions():
 
 def test_apply_round_income_respects_the_credit_cap():
     rng = np.random.default_rng(0)
-    bank = np.full(1000, CREDIT_CAP - 100.0)
+    bank = np.full(1000, TEAM_CREDIT_CAP - 100.0)
     won = np.ones(1000, dtype=bool)
     new_bank = apply_round_income(
-        bank, won, np.zeros(1000, dtype=np.int64), np.ones(1000, dtype=bool), np.ones(1000, dtype=bool), rng
+        bank, won, np.zeros(1000, dtype=np.int64), rng
     )
-    assert (new_bank <= CREDIT_CAP).all()
+    assert (new_bank <= TEAM_CREDIT_CAP).all()
 
 
 # --- ult model ---------------------------------------------------------------
@@ -302,3 +313,62 @@ def test_ults_reset_to_not_ready_at_the_start_of_overtime():
     p0, _, _ = simulate_win_probability(**kw, rng=np.random.default_rng(5), ult_boost_scale=0.0)
     p1, _, _ = simulate_win_probability(**kw, rng=np.random.default_rng(5), ult_boost_scale=1.0)
     assert p0 == p1
+
+
+# --- team-level economy scale (constants.py: per-player values x 5) -------------
+
+
+def test_a_won_round_pays_team_scale_income_not_a_single_players():
+    rng = np.random.default_rng(0)
+    n = 5000
+    bank = apply_round_income(
+        np.zeros(n), np.ones(n, dtype=bool), np.zeros(n, dtype=np.int64), rng,
+    )
+    # 5 x 3000 for the win + ~4 kills x 200
+    assert bank.mean() == pytest.approx(TEAM_ROUND_WIN_REWARD + 4.0 * 200, abs=60)
+
+
+def test_a_team_can_afford_a_full_buy_after_a_couple_of_wins():
+    rng = np.random.default_rng(1)
+    n = 2000
+    bank = np.zeros(n)
+    won = np.ones(n, dtype=bool)
+    for _ in range(2):  # pistol credits spent, then two straight wins
+        bank = apply_round_income(bank, won, np.zeros(n, dtype=np.int64), rng)
+    assert (decide_spend(bank) > 15_000).mean() > 0.95  # a Full buy, not stuck on an eco
+
+
+def test_pistol_round_starts_with_the_real_team_total():
+    assert TEAM_PISTOL_ROUND_CREDITS == 4000  # real data: round-1 team credits are 5 x 800
+
+
+def test_simulated_attacker_loadout_edge_matches_the_real_data_not_a_built_in_bias(monkeypatch):
+    # Real VCT gun rounds: attacker minus defender loadout averages +0.13k (first
+    # half) and +0.34k (second half) credits. With the spike-plant bonus in Tier 3's
+    # income it came out ~+1.75k / +1.89k - on top of the attacker edge already in the
+    # fitted intercept, a double count - so the plant bonus is left out of income.
+    from winprob.tier3 import monte_carlo as mc
+
+    seen = {"total": None, "gaps": []}
+    real_a_is_atk, real_sigmoid = mc._a_is_atk, mc._sigmoid
+
+    def spy_a_is_atk(total, started):
+        seen["total"] = total.copy()
+        return real_a_is_atk(total, started)
+
+    def spy_sigmoid(z):
+        total = seen["total"]
+        half2 = (total >= 12).astype(float)
+        gap = (z - BASE_INTERCEPT - MAP_EFFECTS["haven"] - HALF2_COEF * half2) / DELTA_LOADOUT_COEF
+        keep = (total + 1 <= 24) & ~np.isin(total + 1, (1, 13))  # gun rounds, regulation
+        seen["gaps"].append(gap[keep])
+        return real_sigmoid(z)
+
+    monkeypatch.setattr(mc, "_a_is_atk", spy_a_is_atk)
+    monkeypatch.setattr(mc, "_sigmoid", spy_sigmoid)
+    simulate_win_probability(
+        score_a=0, score_b=0, bank_a=0, bank_b=0, ults_a=0, ults_b=0, streak_a=0, streak_b=0,
+        n=6000, rng=np.random.default_rng(0), ult_boost_scale=0.0, map_name="haven",
+    )
+    mean_gap_thousands = np.concatenate(seen["gaps"]).mean()
+    assert abs(mean_gap_thousands) < 0.6  # real: 0.13-0.34; with the plant bonus: ~1.8
