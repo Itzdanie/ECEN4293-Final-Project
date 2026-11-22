@@ -71,15 +71,17 @@ def win_probability_series(match: pd.DataFrame, p_atk: float | None = None) -> p
     return out
 
 
-def plot_win_probability(series: pd.DataFrame, path: str, title: str | None = None) -> None:
-    """Save the broadcast-style graph: both teams' win probability by round."""
+def win_probability_figure(series: pd.DataFrame, title: str | None = None):
+    """The broadcast-style graph as a Matplotlib figure (both teams' win
+    probability by round). Uses the Agg backend so it works headless."""
     import matplotlib
 
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
 
     team_a, team_b = series.attrs["team_a"], series.attrs["team_b"]
-    fig, ax = plt.subplots(figsize=(9, 4.5))
+    fig = Figure(figsize=(9, 4.5))
+    ax = fig.subplots()
     ax.step(series["round"], series["p_a"], where="post", label=team_a, linewidth=2)
     ax.step(series["round"], series["p_b"], where="post", label=team_b, linewidth=2)
     ax.axhline(0.5, color="gray", linewidth=0.8, linestyle="--")
@@ -91,8 +93,12 @@ def plot_win_probability(series: pd.DataFrame, path: str, title: str | None = No
     ax.set_title(title or f"{team_a} {int(last['score_a'])}-{int(last['score_b'])} {team_b}")
     ax.legend()
     fig.tight_layout()
-    fig.savefig(path)
-    plt.close(fig)
+    return fig
+
+
+def plot_win_probability(series: pd.DataFrame, path: str, title: str | None = None) -> None:
+    """Save the broadcast-style graph to ``path``."""
+    win_probability_figure(series, title).savefig(path)
 
 
 def step_through(match: pd.DataFrame, buys: pd.DataFrame | None = None) -> pd.DataFrame:
