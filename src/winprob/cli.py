@@ -5,6 +5,7 @@
     winprob converge  Monte Carlo error vs N (log-log plot and slope)
     winprob fit       fit the round-win logistic model on the pro data
     winprob match     win-probability graph / step-through for one match
+    winprob ui        open the Streamlit demo UI (needs: pip install -e ".[ui]")
 
 Impossible states are rejected with an explanation (exit code 2).
 """
@@ -187,6 +188,20 @@ def _cmd_match(args) -> int:
     return 0
 
 
+def _cmd_ui(args) -> int:
+    import importlib.util
+    import subprocess
+
+    if importlib.util.find_spec("streamlit") is None:
+        print('error: the UI needs Streamlit - install it with: pip install -e ".[ui]"', file=sys.stderr)
+        return 2
+    app = Path(__file__).resolve().parent / "ui" / "app.py"
+    command = [sys.executable, "-m", "streamlit", "run", str(app)]
+    if args.port:
+        command += ["--server.port", str(args.port)]
+    return subprocess.call(command)
+
+
 # --- parser ----------------------------------------------------------------------------
 
 
@@ -253,6 +268,10 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--out", help="save the win-probability graph to this PNG")
     m.add_argument("--step", action="store_true", help="print credits, buy type and loss streak per round")
     m.set_defaults(func=_cmd_match)
+
+    u = sub.add_parser("ui", help="open the Streamlit demo UI")
+    u.add_argument("--port", type=int, help="port for the local web server (default: Streamlit's own)")
+    u.set_defaults(func=_cmd_ui)
     return parser
 
 
