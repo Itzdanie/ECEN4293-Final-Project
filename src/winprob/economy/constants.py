@@ -46,3 +46,17 @@ PLANT_BONUS = 300
 CREDIT_CAP = 9000
 PISTOL_ROUND_CREDITS = 800
 OVERTIME_ROUND_CREDITS = 5000  # not independently data-checked - see module docstring
+
+
+# --- team-level values ---------------------------------------------------------
+# Everything above is PER PLAYER (each player's own credits, capped at 9000).
+# Tier 3 tracks one number per team, compared against team-total loadouts
+# (a full buy is ~19,000), so its income, cap and reset credits are these
+# five-player totals. Kill reward is already per kill, so it stays as is.
+PLAYERS_PER_TEAM = 5
+TEAM_ROUND_WIN_REWARD = PLAYERS_PER_TEAM * ROUND_WIN_REWARD
+TEAM_LOSS_BONUS_BY_STREAK = {k: PLAYERS_PER_TEAM * v for k, v in LOSS_BONUS_BY_STREAK.items()}
+TEAM_PLANT_BONUS = PLAYERS_PER_TEAM * PLANT_BONUS
+TEAM_CREDIT_CAP = PLAYERS_PER_TEAM * CREDIT_CAP
+TEAM_PISTOL_ROUND_CREDITS = PLAYERS_PER_TEAM * PISTOL_ROUND_CREDITS  # real round-1 team credits: 4,000
+TEAM_OVERTIME_ROUND_CREDITS = PLAYERS_PER_TEAM * OVERTIME_ROUND_CREDITS
