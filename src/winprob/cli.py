@@ -26,8 +26,13 @@ from winprob.tier1.root_finding import (
     required_round_win_rate_secant,
 )
 from winprob.tier3.regression_defaults import default_p_atk
-from winprob.tier1.states import ROUNDS_PER_HALF
-from winprob.validation import InvalidStateError, is_reset_round, validate_scores, validate_tier1_state
+from winprob.validation import (
+    InvalidStateError,
+    is_reset_round,
+    validate_scores,
+    validate_tier1_state,
+    validate_tier2_scores,
+)
 
 
 def _score(text: str) -> tuple[int, int]:
@@ -67,13 +72,17 @@ def _cmd_predict(args) -> int:
     if args.tier == 1:
         pred = P.predict_tier1(score_a, score_b, args.a_started, args.p_atk, args.map, method, args.n, args.seed)
     elif args.tier == 2:
+        validate_tier2_scores(score_a, score_b)  # say "Tier 2 stops at 12-12" before asking for buys
         buy_a, buy_b = args.buy_a, args.buy_b
-        if (buy_a is None or buy_b is None) and (score_a + score_b) in (0, ROUNDS_PER_HALF):
-            buy_a, buy_b = buy_a or "Eco", buy_b or "Eco"  # a pistol round is 50/50 whatever the buy
+        if (buy_a is None or buy_b is None) and is_reset_round(score_a, score_b):
+            # a pistol round is 50/50, and 12-12 gives both teams equal fixed overtime credits,
+            # so the buy types don't change the answer
+            buy_a, buy_b = buy_a or "Eco", buy_b or "Eco"
         if buy_a is None or buy_b is None:
             raise InvalidStateError(
                 "Tier 2 needs --buy-a and --buy-b (Eco, Semi-eco, Semi-buy or Full buy) "
-                "unless the next round is a pistol round; use --tier 1 for a score-only answer"
+                "unless the next round is a pistol round or the 12-12 overtime entry; "
+                "use --tier 1 for a score-only answer"
             )
         pred = P.predict_tier2(score_a, score_b, buy_a, buy_b, args.streak_a, args.streak_b, method, args.n, args.seed)
     else:

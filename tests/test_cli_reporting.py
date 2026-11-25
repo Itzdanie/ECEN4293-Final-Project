@@ -51,6 +51,13 @@ def test_tier_2_is_the_default_and_tier_1_carries_an_economy_caveat(capsys):
     assert code == 2 and "--buy-a" in err and "--tier 1" in err
 
 
+def test_tier_2_explains_overtime_before_asking_for_buys(capsys):
+    code, _, err = run(capsys, "predict", "--score", "13-12")
+    assert code == 2 and "Tier 2 stops at the 12-12" in err and "--buy-a" not in err
+    code, out, _ = run(capsys, "predict", "--score", "12-12")  # equal OT credits: no buys needed
+    assert code == 0 and "50.00%" in out
+
+
 def test_predict_tier2_and_tier3(capsys):
     code, out, _ = run(capsys, "predict", "--tier", "2", "--score", "0-0", "--buy-a", "Eco", "--buy-b", "Eco")
     assert code == 0 and "Tier 2 [exact]" in out

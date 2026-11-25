@@ -78,6 +78,25 @@ def test_bisection_is_robust_where_secant_can_diverge():
         required_round_win_rate_secant(11, 5, "def")
 
 
+def test_secant_example_cited_in_the_writeup():
+    # A started on defense, so attacking at 11-5: secant escapes to about -2.08,
+    # while bisection finds 0.138. (Started on attack, both agree at 0.862.)
+    with pytest.raises(ValueError, match=r"q=-2\.08"):
+        required_round_win_rate_secant(11, 5, "def")
+    assert required_round_win_rate_bisection(11, 5, "def") == pytest.approx(0.138, abs=5e-4)
+    assert required_round_win_rate_secant(11, 5, "atk") == pytest.approx(0.862, abs=5e-4)
+
+
+@pytest.mark.parametrize(
+    "solver", [required_round_win_rate_bisection, required_round_win_rate_secant]
+)
+def test_an_unreachable_target_is_explained_not_faked(solver):
+    # From 6-12 (A defends the rest of regulation), even winning every round only
+    # reaches a coin-flip overtime: 50% is a limit, never reached for q in (0, 1).
+    with pytest.raises(ValueError, match="isn't reached by any round-win rate"):
+        solver(6, 12, "atk", target=0.5)
+
+
 def test_can_solve_for_a_non_default_target():
     q = required_round_win_rate_bisection(2, 0, "atk", target=0.75)
     assert abs(solve_linear_system(q, "atk")[(2, 0)] - 0.75) < 1e-8

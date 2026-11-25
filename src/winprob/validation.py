@@ -116,19 +116,24 @@ def validate_tier1_state(score_a: int, score_b: int, a_started: str = "atk", p_a
         validate_round_win_probability(p_atk)
 
 
-def validate_tier2_state(
-    score_a: int, score_b: int, buy_a: str, buy_b: str, streak_a: int, streak_b: int
-) -> None:
+def validate_tier2_scores(score_a: int, score_b: int) -> None:
+    """A score Tier 2 covers: any regulation score up to the 12-12 overtime entry."""
     validate_scores(score_a, score_b)
-    validate_buy_type("buy_a", buy_a)
-    validate_buy_type("buy_b", buy_b)
-    validate_streak("streak_a", streak_a)
-    validate_streak("streak_b", streak_b)
     if max(score_a, score_b) > ROUNDS_PER_HALF and min(score_a, score_b) >= ROUNDS_PER_HALF:
         raise InvalidStateError(
             f"Tier 2 stops at the {ROUNDS_PER_HALF}-{ROUNDS_PER_HALF} overtime entry "
             f"(overtime credits are equal and fixed); got {score_a}-{score_b}. Use Tier 1 or Tier 3."
         )
+
+
+def validate_tier2_state(
+    score_a: int, score_b: int, buy_a: str, buy_b: str, streak_a: int, streak_b: int
+) -> None:
+    validate_tier2_scores(score_a, score_b)
+    validate_buy_type("buy_a", buy_a)
+    validate_buy_type("buy_b", buy_b)
+    validate_streak("streak_a", streak_a)
+    validate_streak("streak_b", streak_b)
 
 
 def validate_tier3_state(

@@ -38,6 +38,13 @@ def _objective(score_a: int, score_b: int, a_started: Side, target: float):
             f"({lo + target:.6f}) for every round-win rate in (0, 1) - "
             f"there's no unique rate that reaches a target of {target}"
         )
+    if lo * hi > 0:
+        raise ValueError(
+            f"from ({score_a}, {score_b}), team A's win probability runs from "
+            f"{lo + target:.4%} (attackers almost never win a round) to {hi + target:.4%} "
+            f"(attackers almost always win), so a target of {target:.4%} isn't reached "
+            "by any round-win rate in (0, 1)"
+        )
     return g
 
 
