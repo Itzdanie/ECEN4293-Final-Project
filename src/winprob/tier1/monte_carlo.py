@@ -18,17 +18,18 @@ Z_95 = 1.959963984540054  # two-sided 95% normal quantile
 
 def _round_win_prob_a(total_rounds_played: np.ndarray, p_half1_a: float, p_half2_a: float) -> np.ndarray:
     """Vectorized P(team A wins the next round) for each trial's total
-    rounds played so far: one swap at round 13 in regulation, then a swap
-    every round in overtime (``total_rounds_played >= 24``).
+    rounds played so far: one swap at round 13 in regulation, another at
+    the start of overtime (round 25 is on the starting side), then a swap
+    every round (``total_rounds_played >= 24``).
     """
     in_half1 = total_rounds_played < ROUNDS_PER_HALF
     in_overtime = total_rounds_played >= 2 * ROUNDS_PER_HALF
-    ot_same_side_as_half2 = ((total_rounds_played - 2 * ROUNDS_PER_HALF) % 2) == 0
+    ot_on_starting_side = ((total_rounds_played - 2 * ROUNDS_PER_HALF) % 2) == 0
 
     return np.where(
         in_half1,
         p_half1_a,
-        np.where(in_overtime, np.where(ot_same_side_as_half2, p_half2_a, p_half1_a), p_half2_a),
+        np.where(in_overtime, np.where(ot_on_starting_side, p_half1_a, p_half2_a), p_half2_a),
     )
 
 

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from winprob.tier1.exact import WIN_SCORE, solve_linear_system, solve_recursive
+from winprob.tier1.lookup import exact_win_probability
 from winprob.tier1.monte_carlo import simulate_win_probability
 from winprob.tier1.overtime import ot_win_probability
 from winprob.tier1.states import map_winner, other_side, side_for_team_a
@@ -122,6 +123,22 @@ def test_side_for_team_a_swaps_once_after_round_12():
     assert side_for_team_a(11, "atk") == "atk"
     assert side_for_team_a(12, "atk") == "def"
     assert side_for_team_a(23, "atk") == "def"
+
+
+def test_overtime_starts_on_the_starting_side_then_swaps_every_round():
+    # Sides swap again at the start of overtime, so round 25 is on the side the
+    # team started on. Real sequence: Fnatic (started on attack) vs NRG on Abyss,
+    # VALORANT Champions 2025 grand final, attacked rounds 25 and 27, defended 26 and 28.
+    assert [side_for_team_a(n, "atk") for n in (24, 25, 26, 27)] == ["atk", "def", "atk", "def"]
+    assert [side_for_team_a(n, "def") for n in (24, 25, 26, 27)] == ["def", "atk", "def", "atk"]
+
+
+def test_mid_overtime_pair_uses_the_side_of_the_round_being_played():
+    # At 13-12 (A started on attack) round 26 is A's defense round, so A wins the
+    # map with P = (1 - p) + p * 0.5, the pair after a split being a coin flip.
+    p = 0.532
+    assert exact_win_probability(13, 12, p, "atk") == pytest.approx(1 - p / 2)
+    assert exact_win_probability(12, 13, p, "atk") == pytest.approx((1 - p) * 0.5)
 
 
 def test_map_winner_requires_two_round_margin_in_overtime():

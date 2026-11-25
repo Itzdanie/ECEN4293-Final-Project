@@ -22,7 +22,7 @@ from winprob.reporting.match import (
     win_probability_figure,
     win_probability_series,
 )
-from winprob.tier1.states import ROUNDS_PER_HALF, map_winner, other_side, side_for_team_a
+from winprob.tier1.states import ROUNDS_PER_HALF, map_winner, side_for_team_a
 from winprob.tier3.regression_defaults import MAP_EFFECTS, default_p_atk
 from winprob.ults.roles import AGENT_SUBROLE, AGENTS, ROLES, role_of
 from winprob.validation import TEAM_CREDIT_CAP, InvalidStateError
@@ -52,22 +52,13 @@ def _change_score(team: str, step: int) -> None:
     st.session_state[f"score_{team}"] += step
 
 
-def _your_side(played: int, a_started: str) -> str:
-    """Your side for the next round. Overtime starts on the second-half side
-    and then swaps every round (the same convention as the Tier 1 model)."""
-    if played < 2 * ROUNDS_PER_HALF:
-        return side_for_team_a(played, a_started)
-    second_half = other_side(a_started)
-    return second_half if (played - 2 * ROUNDS_PER_HALF) % 2 == 0 else a_started
-
-
 def _situation(score_a: int, score_b: int, a_started: str) -> str:
     """One line on what the next round is, e.g. "Round 13 · you're on defense · pistol round"."""
     winner = map_winner(score_a, score_b)
     if winner is not None:
         return "The map is over: " + ("you won." if winner == 1.0 else "the enemy won.")
     played = score_a + score_b
-    parts = [f"Round {played + 1}", f"you're on {SIDE_LABELS[_your_side(played, a_started)].lower()}"]
+    parts = [f"Round {played + 1}", f"you're on {SIDE_LABELS[side_for_team_a(played, a_started)].lower()}"]
     if played in (0, ROUNDS_PER_HALF):
         parts.append("pistol round")
     if played >= 2 * ROUNDS_PER_HALF:

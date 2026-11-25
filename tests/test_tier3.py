@@ -8,6 +8,7 @@ from winprob.economy.constants import (
     TEAM_ROUND_WIN_REWARD,
 )
 from winprob.tier1.exact import solve_linear_system
+from winprob.tier1.states import side_for_team_a
 from winprob.tier3 import simulate_win_probability
 from winprob.tier3.economy_sim import apply_round_income, decide_spend, draw_survivors
 from winprob.tier3.monte_carlo import _a_is_atk, _no_future_value_in_saving, _sigmoid
@@ -120,8 +121,13 @@ def test_a_is_atk_matches_tier1_side_rule():
     # one swap after round 12, a_started="atk"
     assert _a_is_atk(np.array([0, 11]), True).tolist() == [True, True]
     assert _a_is_atk(np.array([12, 20]), True).tolist() == [False, False]
-    # overtime swaps every round
-    assert _a_is_atk(np.array([24, 25, 26]), True).tolist() == [False, True, False]
+    # overtime starts on the starting side, then swaps every round
+    assert _a_is_atk(np.array([24, 25, 26]), True).tolist() == [True, False, True]
+    # and agrees with Tier 1's scalar rule everywhere, both starting sides
+    played = np.arange(40)
+    for started in ("atk", "def"):
+        expected = [side_for_team_a(int(n), started) == "atk" for n in played]
+        assert _a_is_atk(played, started == "atk").tolist() == expected
 
 
 # --- economy constants (checked against real data - see constants.py) -----

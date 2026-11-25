@@ -76,12 +76,13 @@ def _no_future_value_in_saving(my_score: np.ndarray, opp_score: np.ndarray, tota
 
 def _a_is_atk(total: np.ndarray, a_started_atk: bool) -> np.ndarray:
     """Vectorized version of Tier 1's side rule: one swap after round 12,
-    then overtime swaps every round."""
+    another at the start of overtime (round 25 is on the starting side),
+    then a swap every round."""
     in_half1 = total < ROUNDS_PER_HALF
     in_ot = total >= 2 * ROUNDS_PER_HALF
     ot_parity_even = ((total - 2 * ROUNDS_PER_HALF) % 2) == 0
     half2_side_atk = not a_started_atk
-    ot_side_atk = np.where(ot_parity_even, half2_side_atk, a_started_atk)
+    ot_side_atk = np.where(ot_parity_even, a_started_atk, half2_side_atk)
     return np.where(in_half1, a_started_atk, np.where(in_ot, ot_side_atk, half2_side_atk))
 
 

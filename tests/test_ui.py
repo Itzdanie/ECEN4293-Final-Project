@@ -130,7 +130,7 @@ def test_situation_line_names_the_round_side_and_pistol_and_overtime():
     assert any("Round 13 · you're on defense · pistol round" in c.value for c in at.caption)
     at.number_input(key="score_a").set_value(12).run()
     at.number_input(key="score_b").set_value(12).run()
-    assert any("Round 25 · you're on defense · overtime" in c.value for c in at.caption)
+    assert any("Round 25 · you're on attack · overtime" in c.value for c in at.caption)
     at.number_input(key="score_a").set_value(13).run()
     assert any("your match point" in c.value for c in at.caption)
     at.number_input(key="score_a").set_value(14).run()

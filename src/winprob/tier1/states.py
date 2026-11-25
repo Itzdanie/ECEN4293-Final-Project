@@ -17,12 +17,16 @@ def other_side(side: Side) -> Side:
 
 
 def side_for_team_a(total_rounds_played: int, a_started: Side) -> Side:
-    """Which side team A is on for the next round, given the single
-    half-swap after round 12. Only valid up to the 12-12 overtime entry
-    (``total_rounds_played <= 24``) - overtime swaps every round instead,
-    see :mod:`winprob.tier1.overtime`.
+    """Which side team A is on for the next round. Sides swap after round
+    12, and swap again at the start of overtime, so round 25 is played on
+    the side A started on; after that they swap every round.
     """
-    return a_started if total_rounds_played < ROUNDS_PER_HALF else other_side(a_started)
+    if total_rounds_played < ROUNDS_PER_HALF:
+        return a_started
+    if total_rounds_played < 2 * ROUNDS_PER_HALF:
+        return other_side(a_started)
+    ot_rounds_played = total_rounds_played - 2 * ROUNDS_PER_HALF
+    return a_started if ot_rounds_played % 2 == 0 else other_side(a_started)
 
 
 def round_win_prob_a(p_atk: float, side_a: Side) -> float:
