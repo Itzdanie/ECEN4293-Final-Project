@@ -29,14 +29,14 @@ def metrics(at: AppTest) -> dict[str, str]:
 def test_default_view_is_tier_2_exact_and_shows_both_teams():
     at = fresh()
     shown = metrics(at)
-    assert shown["Team A"] == "32.30%" and shown["Team B"] == "67.70%"  # 5-7, pistol next
+    assert shown["Your team"] == "41.26%" and shown["Enemy team"] == "58.74%"  # 5-6
     assert any(s.value == "Exact" for s in at.subheader)
 
 
 def test_tier_1_shows_the_score_only_answer_and_the_economy_caveat():
     at = fresh()
-    at.radio(key="tier").set_value(1).run()
-    assert metrics(at)["Team A"] == "27.28%"
+    at.segmented_control(key="tier").set_value(1).run()
+    assert metrics(at)["Your team"] == "37.75%"
     assert any("ignores the economy" in i.value for i in at.info)
 
 
@@ -50,18 +50,18 @@ def test_impossible_state_shows_an_explanatory_error_not_a_crash():
 
 def test_a_decided_map_is_exact_one_and_zero():
     at = fresh()
-    at.radio(key="tier").set_value(1).run()
+    at.segmented_control(key="tier").set_value(1).run()
     at.number_input(key="score_a").set_value(13).run()
     at.number_input(key="score_b").set_value(4).run()
     shown = metrics(at)
-    assert shown["Team A"] == "100.00%" and shown["Team B"] == "0.00%"
+    assert shown["Your team"] == "100.00%" and shown["Enemy team"] == "0.00%"
 
 
 def test_compare_mode_waits_for_run_then_shows_exact_mc_and_the_difference():
     at = fresh()
-    at.radio(key="tier").set_value(1).run()
-    at.radio(key="method").set_value("both").run()
-    at.number_input(key="n").set_value(5000).run()
+    at.segmented_control(key="tier").set_value(1).run()
+    at.segmented_control(key="method").set_value("both").run()
+    at.segmented_control(key="n").set_value(1000).run()
     assert "Monte Carlo minus exact" not in metrics(at)  # nothing until Run is pressed
     at.button(key="run").click().run()
     assert not at.exception
@@ -72,43 +72,89 @@ def test_compare_mode_waits_for_run_then_shows_exact_mc_and_the_difference():
 
 def test_tier_3_runs_monte_carlo_on_the_button_and_labels_it():
     at = fresh()
-    at.radio(key="tier").set_value(3).run()
-    at.number_input(key="n").set_value(2000).run()
+    at.segmented_control(key="tier").set_value(3).run()
+    at.segmented_control(key="n").set_value(1000).run()
     at.button(key="run").click().run()
     assert not at.exception
-    assert any(s.value.startswith("Monte Carlo (N=2,000") for s in at.subheader)
-    assert metrics(at)["Team A"].endswith("%")
+    assert any(s.value.startswith("Monte Carlo (N=1,000") for s in at.subheader)
+    assert metrics(at)["Your team"].endswith("%")
 
 
 def test_tier_3_agent_picker_and_ready_ults_reach_the_model():
     at = fresh()
-    at.radio(key="tier").set_value(3).run()
-    at.number_input(key="n").set_value(1000).run()
+    at.segmented_control(key="tier").set_value(3).run()
+    at.segmented_control(key="n").set_value(1000).run()
     at.checkbox(key="a_named").set_value(True).run()
     at.number_input(key="score_a").set_value(5).run()
     at.number_input(key="score_b").set_value(5).run()
-    at.multiselect(key="a_ready").set_value(["omen", "raze"]).run()
+    at.pills(key="a_ready").set_value(["omen", "raze"]).run()
     at.button(key="run").click().run()
     assert not at.exception and not at.error
 
 
 def test_tier_3_ready_ults_at_a_pistol_round_are_explained():
     at = fresh()
-    at.radio(key="tier").set_value(3).run()
+    at.segmented_control(key="tier").set_value(3).run()
     at.number_input(key="score_a").set_value(0).run()
     at.number_input(key="score_b").set_value(0).run()
-    at.slider(key="ults_a").set_value(2).run()
+    at.segmented_control(key="ults_a").set_value(2).run()
     at.button(key="run").click().run()
     assert any("reset every ult" in e.value for e in at.error)
 
 
 def test_a_stale_result_is_flagged_when_inputs_change():
     at = fresh()
-    at.radio(key="tier").set_value(3).run()
-    at.number_input(key="n").set_value(1000).run()
+    at.segmented_control(key="tier").set_value(3).run()
+    at.segmented_control(key="n").set_value(1000).run()
     at.button(key="run").click().run()
     at.number_input(key="score_a").set_value(6).run()
     assert any("inputs changed" in w.value for w in at.warning)
+
+
+def test_scoreboard_plus_and_minus_buttons_change_the_score():
+    at = fresh()
+    at.button(key="plus_a").click().run()
+    at.button(key="plus_b").click().run()
+    at.button(key="minus_b").click().run()  # take back an accidental click
+    assert (at.session_state["score_a"], at.session_state["score_b"]) == (6, 6)
+    at.number_input(key="score_a").set_value(0).run()
+    assert at.button(key="minus_a").disabled  # can't go below zero
+    at.number_input(key="score_a").set_value(13).run()
+    assert at.button(key="plus_a").disabled and not at.button(key="minus_a").disabled
+
+
+def test_situation_line_names_the_round_side_and_pistol_and_overtime():
+    at = fresh()
+    assert any("Round 12 · you're on attack" in c.value for c in at.caption)
+    at.button(key="plus_a").click().run()  # 6-6: round 13, sides swap
+    assert any("Round 13 · you're on defense · pistol round" in c.value for c in at.caption)
+    at.number_input(key="score_a").set_value(12).run()
+    at.number_input(key="score_b").set_value(12).run()
+    assert any("Round 25 · you're on defense · overtime" in c.value for c in at.caption)
+    at.number_input(key="score_a").set_value(13).run()
+    assert any("your match point" in c.value for c in at.caption)
+    at.number_input(key="score_a").set_value(14).run()
+    assert any("you won" in c.value for c in at.caption)
+    assert at.button(key="plus_a").disabled
+
+
+def test_map_and_side_are_greyed_out_in_tier_2_only():
+    at = fresh()  # Tier 2 has no map or side in its model
+    assert at.selectbox(key="map").disabled and at.segmented_control(key="a_started").disabled
+    assert any("doesn't use the map" in c.value for c in at.caption)
+    for tier in (1, 3):
+        at.segmented_control(key="tier").set_value(tier).run()
+        assert not at.selectbox(key="map").disabled
+        assert not at.segmented_control(key="a_started").disabled
+
+
+def test_tier_3_run_is_disabled_until_five_agents_are_picked():
+    at = fresh()
+    at.segmented_control(key="tier").set_value(3).run()
+    at.checkbox(key="a_named").set_value(True).run()
+    at.pills(key="a_duel").set_value(["raze"]).run()  # drops jett: four agents
+    assert at.button(key="run").disabled
+    assert any("pick exactly five" in w.value for w in at.warning)
 
 
 def _write_match(path: Path) -> None:
@@ -130,6 +176,8 @@ def test_match_tab_graphs_a_match_and_explains_a_missing_file_or_id(tmp_path):
     at.text_input(key="match_id").set_value("m1").run()
     assert not at.exception and not at.error
     assert len(at.dataframe) == 1  # the round-by-round table
+    # one win % per round, taken after that round (Alpha wins, loses, wins, wins)
+    assert list(at.dataframe[0].value["Alpha win % after"]) == [57.6, 49.0, 56.9, 65.0]
     at.text_input(key="match_id").set_value("nope").run()
     assert any("isn't in the rounds file" in e.value for e in at.error)
     at.text_input(key="rounds_path").set_value(str(tmp_path / "missing.csv")).run()

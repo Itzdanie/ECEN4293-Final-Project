@@ -1,0 +1,7 @@
+[theme]
+# Always dark, whatever the viewer's system setting.
+base = "dark"
+# Navy-blue accent for buttons, selected controls and the progress bar.
+# Darker navy (e.g. #1F3A6B) is unreadable as text on the dark background
+# (1.7:1 contrast); this one is 5.6:1.
+primaryColor = "#6B8BCF"
